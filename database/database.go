@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // exported
@@ -19,8 +21,8 @@ func NewClient(path string) Client {
 }
 
 type databaseSchema struct {
-	Users map[string]User `json:"users"`
-	Posts map[string]Post `json:"posts"`
+	Users map[string]User `json:"users"` // key,value = email,user
+	Posts map[string]Post `json:"posts"` // key,value = id, post
 }
 
 // User -
@@ -38,6 +40,68 @@ type Post struct {
 	CreatedAt time.Time `json:"createdAt"`
 	UserEmail string    `json:"userEmail"`
 	Text      string    `json:"text"`
+}
+
+func (c Client) CreatePost(userEmail, text string) (Post, error) {
+	// read db, ensure user exists
+	db, err := c.readDB()
+	if err != nil {
+		return Post{}, err
+	}
+	if _, ok := db.Users[userEmail]; !ok {
+		return Post{}, errors.New("user doesn't exist")
+	}
+
+	// create new post and add to db
+	post := Post{
+		ID:        uuid.New().String(),
+		CreatedAt: time.Now().UTC(),
+		UserEmail: userEmail,
+		Text:      text,
+	}
+
+	db.Posts[post.ID] = post // add post to Posts
+	err = c.updateDB(db)     // save to disk
+	if err != nil {
+		return Post{}, err
+	}
+
+	return post, nil
+}
+
+// GetPosts -
+// return all posts of a specific user identified by their userEmail
+func (c Client) GetPosts(userEmail string) ([]Post, error) {
+	// read db, ensure user exists
+	db, err := c.readDB()
+	if err != nil {
+		return []Post{}, err
+	}
+
+	allPosts := []Post{}
+	for _, post := range db.Posts {
+		if post.UserEmail == userEmail {
+			allPosts = append(allPosts, post)
+		}
+	}
+
+	return allPosts, nil
+}
+
+// DeletePost -
+// delete a single post identified by the id
+func (c Client) DeletePost(id string) error {
+	// get db from database
+	db, err := c.readDB()
+	if err != nil {
+		return err
+	}
+	delete(db.Posts, id) // delete post, if doesn't exist noop
+	err = c.updateDB(db) // write to disk
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // create new db file (json) at path specified by the client
@@ -146,7 +210,10 @@ func (c Client) UpdateUser(email, password, name string, age int) (User, error) 
 	user.Age = age
 
 	db.Users[email] = user
-	c.updateDB(db)
+	err = c.updateDB(db)
+	if err != nil {
+		return User{}, err
+	}
 
 	return user, nil
 }
@@ -175,7 +242,10 @@ func (c Client) DeleteUser(email string) error {
 	}
 
 	delete(db.Users, email) // if key doesn't exist, this is no-op
-	c.updateDB(db)          // save changes to disk
+	err = c.updateDB(db)    // save changes to disk
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

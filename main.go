@@ -11,6 +11,11 @@ func testHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("{}"))
 }
 
+// handles http requests and return json
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+
+}
+
 func main() {
 	// allocate http request multiplexer
 	serveMux := http.NewServeMux()
