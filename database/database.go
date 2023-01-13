@@ -151,13 +151,13 @@ func (c Client) readDB() (databaseSchema, error) {
 	}
 
 	// convert data from json byte slice to databaseSchema
-	dbFromRead := databaseSchema{}
-	err = json.Unmarshal(data, &dbFromRead)
+	db := databaseSchema{}
+	err = json.Unmarshal(data, &db)
 	if err != nil {
 		return databaseSchema{}, err
 	}
 
-	return dbFromRead, nil
+	return db, nil
 }
 
 // CreateUser -
