@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -45,6 +46,30 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.WriteHeader(code)
 }
 
+// TODO: this function is not used by any other func, except the test function as of right now
+// a filter for eligible users
+func userIsEligible(email, password string, age int) error {
+	// empty email or password
+	if email == "" {
+		return errors.New("email can't be empty")
+	}
+	if password == "" {
+		return errors.New("password can't be empty")
+	}
+
+	// age is less than 18
+	if age < 18 {
+		return fmt.Errorf("age %d is less than 18, must be at least 18", age)
+	}
+
+	return nil
+}
+
+// TODO: allow updating email? would need to delete old user, then create new
+// key-value map, but then Posts would be affected to, since those have an email attached to them
+// could get all posts from the user via the old email, then update all of those posts to use the new email
+// then write those changes to disk
+//
 // update user when a PUT request is made to /users/EMAIL
 // take parameters in the body of the request
 func (apiCfg apiConfig) handlerUpdateUser(w http.ResponseWriter, r *http.Request) {
@@ -139,7 +164,7 @@ func (apiCfg apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request
 	respondWithJSON(w, http.StatusCreated, struct{}{})
 }
 
-// routes the specific http request to the correct handler
+// routes the specific http request about users to the correct handler
 func (apiCfg apiConfig) endpointUsersHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -154,6 +179,84 @@ func (apiCfg apiConfig) endpointUsersHandler(w http.ResponseWriter, r *http.Requ
 	case http.MethodDelete:
 		// call DELETE handler
 		apiCfg.handlerDeleteUser(w, r)
+	default:
+		respondWithError(w, 404, errors.New("method not supported"))
+	}
+}
+
+// delete a post when a DELETE request is made to /posts/ID
+// ID is UUID of the post to be deleted
+func (apiCfg apiConfig) handlerDeletePost(w http.ResponseWriter, r *http.Request) {
+	// get uuid from path
+	uuid := r.URL.Path[len("/posts/"):]
+
+	// delete post
+	err := apiCfg.dbClient.DeletePost(uuid)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	// good, return 200 status code
+	respondWithJSON(w, http.StatusOK, struct{}{})
+}
+
+// create a post when a POST request is made to /posts
+// this takes an input of a json object with the following fields:
+// email, text
+func (apiCfg apiConfig) handlerCreatePost(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		UserEmail string `json:"email"`
+		Text      string `json:"text"`
+	}
+
+	// convert json object to parameters struct
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	// create the new post from params
+	_, err = apiCfg.dbClient.CreatePost(params.UserEmail, params.Text)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	// good, return 201 status code
+	respondWithJSON(w, http.StatusCreated, struct{}{})
+}
+
+// return list of all posts when a GET request is made to /posts/EMAIL
+// for a specific user based on the EMAIL given
+func (apiCfg apiConfig) handlerRetrievePosts(w http.ResponseWriter, r *http.Request) {
+	// get email from path
+	email := r.URL.Path[len("/posts/"):]
+	posts, err := apiCfg.dbClient.GetPosts(email)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	// good, return 200 status code with the user info
+	respondWithJSON(w, http.StatusOK, posts)
+}
+
+// routes specific http request about posts to the correct handler
+func (apiCfg apiConfig) endpointPostsHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		// call GET handler
+		apiCfg.handlerRetrievePosts(w, r)
+	case http.MethodPost:
+		// call POST handler
+		apiCfg.handlerCreatePost(w, r)
+	case http.MethodDelete:
+		// call DELETE handler
+		apiCfg.handlerDeletePost(w, r)
 	default:
 		respondWithError(w, 404, errors.New("method not supported"))
 	}
@@ -185,6 +288,10 @@ func main() {
 	// handler to register at the "/users" path
 	serveMux.HandleFunc("/users", apiConfig.endpointUsersHandler)
 	serveMux.HandleFunc("/users/", apiConfig.endpointUsersHandler)
+
+	// Posts
+	serveMux.HandleFunc("/posts", apiConfig.endpointPostsHandler)
+	serveMux.HandleFunc("/posts/", apiConfig.endpointPostsHandler)
 
 	// http server
 	const addr = "localhost:8080"
