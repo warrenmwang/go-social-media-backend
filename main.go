@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"time"
+	"os"
 
 	"github.com/Warren-Wang-OG/go-social-media-backend/database"
 )
@@ -184,6 +185,9 @@ func (apiCfg apiConfig) endpointUsersHandler(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// TODO: create a post update function, may require changes to the 
+// original post definition.
+
 // delete a post when a DELETE request is made to /posts/ID
 // ID is UUID of the post to be deleted
 func (apiCfg apiConfig) handlerDeletePost(w http.ResponseWriter, r *http.Request) {
@@ -294,7 +298,9 @@ func main() {
 	serveMux.HandleFunc("/posts/", apiConfig.endpointPostsHandler)
 
 	// http server
-	const addr = "localhost:8080"
+	port := os.Getenv("PORT")
+	addr := fmt.Sprintf(":%v", port)
+	fmt.Printf("Running on port: %v\n", port)
 	srv := http.Server{
 		Handler:      serveMux,
 		Addr:         addr,
